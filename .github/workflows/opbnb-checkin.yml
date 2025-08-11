@@ -1,8 +1,8 @@
-name: Daren opBNB Check-In
+name: Daren opBNB Check-In (Multi)
 
 on:
   schedule:
-    - cron: "20 13 * * *"   # 13:20 UTC = 20:20 WIB
+    - cron: "0 1 * * *"   # 08:00 WIB
   workflow_dispatch: {}
 
 jobs:
@@ -17,18 +17,20 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install web3
-      - name: Run check-in
+      - name: Run multi check-in
         id: run
         env:
           OPBNB_RPC_URL: ${{ secrets.OPBNB_RPC_URL }}
           OPBNB_PRIVATE_KEY: ${{ secrets.OPBNB_PRIVATE_KEY }}
+          CONTRACT_ADDRESSES: "0xfe7079971c388463d18e83fbff363936150e9b92,0x8461e850a4f0f9616d9a940f555ea7c735917daa"
+          EXPLORER_BASE: "https://opbnb.bscscan.com/tx/"
         run: |
           set -o pipefail
-          python scripts/opbnb_checkin.py | tee run.log
+          python scripts/opbnb_checkin_multi.py | tee run.log
           echo "LOG<<EOF" >> $GITHUB_OUTPUT
           sed -n '1,200p' run.log >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-          if grep -q "\[OK\]" run.log; then
+          if grep -q "\[OK\] At least one contract succeeded" run.log; then
             echo "STATUS=success" >> $GITHUB_OUTPUT
           else
             echo "STATUS=failed" >> $GITHUB_OUTPUT
@@ -38,7 +40,7 @@ jobs:
           TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          TEXT="🟡 *Daren opBNB Check-In*\nStatus: ${{ steps.run.outputs.STATUS }}\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\nLog:\n\`\`\`\n${{ steps.run.outputs.LOG }}\n\`\`\`"
+          TEXT="🟡 *Daren opBNB Check-In (Multi)*\nStatus: ${{ steps.run.outputs.STATUS }}\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\nLog:\n\`\`\`\n${{ steps.run.outputs.LOG }}\n\`\`\`"
           curl -sS -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
             -d chat_id="${CHAT_ID}" -d parse_mode="Markdown" \
             --data-urlencode "text=${TEXT}"
