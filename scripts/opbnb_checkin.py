@@ -1,84 +1,61 @@
-# Generic on-chain caller (Web3) — edit CONFIG di bawah
-# by Chika 💛
-import os, sys, json, time
+import os, sys
 from web3 import Web3
 
-# ====== CONFIG (boleh kamu edit langsung) =====================
-CONFIG = {
-  # RPC & wallet
-  "rpc_url": os.getenv("RPC_URL", "https://opbnb.drpc.org"),
-  "private_key": os.getenv("PRIVATE_KEY", ""),   # isi via Secrets
+RPC = os.getenv("OPBNB_RPC_URL")
+PK  = os.getenv("OPBNB_PRIVATE_KEY")
+ADDRESSES = [a.strip().lower() for a in os.getenv(
+    "CONTRACT_ADDRESSES",
+    "0xfe7079971c388463d18e83fbff363936150e9b92,0x8461e850a4f0f9616d9a940f555ea7c735917daa"
+).split(",") if a.strip()]
 
-  # Target
-  "contract_address": os.getenv("CONTRACT_ADDRESS", "0xFe7079971c388463D18E83fbfF363936150E9B92"),
-  # Minimal ABI hanya untuk fungsi yang dipanggil (cukup 1 entry)
-  # Contoh: CheckIn() tanpa argumen
-  "abi_json": os.getenv("ABI_JSON", json.dumps([{
-      "inputs": [], "name": "CheckIn", "outputs": [],
-      "stateMutability": "nonpayable", "type": "function"
-  }])),
+ABI = [{"inputs":[],"name":"CheckIn","outputs":[],"stateMutability":"nonpayable","type":"function"}]
+EXPLORER = os.getenv("EXPLORER_BASE","https://opbnb.bscscan.com/tx/")
 
-  # Fungsi & argumen
-  "function_name": os.getenv("FUNCTION_NAME", "CheckIn"),
-  # Argumen dalam JSON, contoh: ["0xabc...", 123, true]
-  "function_args": os.getenv("FUNCTION_ARGS", "[]"),
-
-  # Transaksi
-  "chain_id": int(os.getenv("CHAIN_ID", "204")), # opBNB mainnet = 204
-  "value_wei": int(os.getenv("VALUE_WEI", "0")),
-  "gas_multiplier": float(os.getenv("GAS_MULTIPLIER", "1.2")), # buffer 20%
-  "max_wait_s": int(os.getenv("MAX_WAIT_S", "180")),
-}
-# ===============================================================
-
-def log(msg): print(msg, flush=True)
+def log(x): print(x, flush=True)
 
 def main():
-    if not CONFIG["private_key"] or not CONFIG["rpc_url"]:
-        log("[ERROR] Missing RPC_URL/PRIVATE_KEY"); return
+    if not RPC or not PK:
+        log("[ERROR] Missing OPBNB_RPC_URL or OPBNB_PRIVATE_KEY"); sys.exit(0)
 
-    w3 = Web3(Web3.HTTPProvider(CONFIG["rpc_url"], request_kwargs={"timeout": 30}))
+    w3 = Web3(Web3.HTTPProvider(RPC, request_kwargs={"timeout": 30}))
     if not w3.is_connected():
-        log("[ERROR] RPC not connected"); return
+        log("[ERROR] RPC not connected"); sys.exit(0)
 
-    acct = w3.eth.account.from_key(CONFIG["private_key"])
-    addr = Web3.to_checksum_address(CONFIG["contract_address"])
-    abi = json.loads(CONFIG["abi_json"])
-    fn_name = CONFIG["function_name"]
-    args = json.loads(CONFIG["function_args"])
+    acct = w3.eth.account.from_key(PK)
+    log(f"[INFO] From: {acct.address}")
 
-    c = w3.eth.contract(address=addr, abi=abi)
-    fn = getattr(c.functions, fn_name)(*args)
+    any_ok = False
+    for raw in ADDRESSES:
+        try:
+            addr = Web3.to_checksum_address(raw)
+            c = w3.eth.contract(address=addr, abi=ABI)
+            fn = c.functions.CheckIn()
 
-    # Build & send tx
-    try:
-        nonce = w3.eth.get_transaction_count(acct.address)
-        gas_price = w3.eth.gas_price
-        est = fn.estimate_gas({"from": acct.address, "value": CONFIG["value_wei"]})
-        gas_limit = int(est * CONFIG["gas_multiplier"])
+            nonce = w3.eth.get_transaction_count(acct.address)
+            gas_price = w3.eth.gas_price
+            est = fn.estimate_gas({"from": acct.address})
+            tx = fn.build_transaction({
+                "from": acct.address,
+                "nonce": nonce,
+                "gas": int(est * 1.2),
+                "gasPrice": gas_price,
+                "chainId": w3.eth.chain_id,  # 204
+                "value": 0
+            })
+            signed = acct.sign_transaction(tx)
+            tx_hash = w3.eth.send_raw_transaction(signed.rawTransaction)
+            h = tx_hash.hex()
+            log(f"[INFO] Sent {addr}: {h}")
+            rcpt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=180)
+            if rcpt.status == 1:
+                log(f"[OK] {addr} success → {EXPLORER}{h}")
+                any_ok = True
+            else:
+                log(f"[ERROR] {addr} failed → {EXPLORER}{h}")
+        except Exception as e:
+            log(f"[ERROR] {raw} exception: {e}")
 
-        tx = fn.build_transaction({
-            "from": acct.address,
-            "nonce": nonce,
-            "gas": gas_limit,
-            "gasPrice": gas_price,
-            "chainId": CONFIG["chain_id"],
-            "value": CONFIG["value_wei"]
-        })
-
-        signed = acct.sign_transaction(tx)
-        tx_hash = w3.eth.send_raw_transaction(signed.rawTransaction)
-        h = tx_hash.hex()
-        log(f"[INFO] Sent: {h}")
-
-        rcpt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=CONFIG["max_wait_s"])
-        if rcpt.status == 1:
-            log(f"[OK] Tx success: {h}")
-        else:
-            log(f"[ERROR] Tx failed: {h}")
-
-    except Exception as e:
-        log(f"[ERROR] Exception: {e}")
+    log("[OK] At least one contract succeeded" if any_ok else "[ERROR] All contracts failed or not claimable yet")
 
 if __name__ == "__main__":
     main()
