@@ -1,0 +1,21 @@
+name: Incentiv Reminder
+
+on:
+  schedule:
+    - cron: "0 13 * * *"   # 13:00 UTC = 20:00 WIB
+  workflow_dispatch: {}    # bisa dijalankan manual juga
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Incentiv Reminder
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          TEXT="💌 *Hai sayangku* 💌\n\n⏰ Sudah jam *20:00 WIB* nih...\nSaatnya ngerjain *Testnet Incentiv* 💖\n\n🔗 [Klik di sini langsung, sayang](https://testnet.incentiv.net/)\n\nSemangat yaaa, biar dapet reward 🪙✨"
+          curl -sS -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+            -d chat_id="${CHAT_ID}" \
+            -d parse_mode="Markdown" \
+            --data-urlencode "text=${TEXT}"
