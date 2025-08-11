@@ -1,0 +1,70 @@
+name: Citrea Quest Checker
+
+on:
+  schedule:
+    - cron: "0 13 */2 * *"   # setiap 2 hari sekali, 13:00 UTC = 20:00 WIB
+  workflow_dispatch: {}       # bisa manual tes
+
+permissions:
+  contents: write             # biar bisa commit file state/
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch Citrea Quest page
+        run: |
+          set -e
+          mkdir -p state
+          curl -fsSL "https://bapps.citrea.xyz/quest" -o page.html
+
+      - name: Compute current hash
+        id: hash
+        run: |
+          HASH=$(sha256sum page.html | cut -d' ' -f1)
+          echo "HASH=$HASH" >> $GITHUB_ENV
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
+
+      - name: Read previous hash
+        id: prev
+        run: |
+          if [ -f state/citrea_hash.txt ]; then
+            PREV=$(cat state/citrea_hash.txt)
+          else
+            PREV=""
+          fi
+          echo "prev=$PREV" >> $GITHUB_OUTPUT
+
+      - name: Detect change & update state
+        id: diff
+        run: |
+          if [ "${{ steps.prev.outputs.prev }}" = "$HASH" ] && [ -n "$HASH" ]; then
+            echo "changed=no" >> $GITHUB_OUTPUT
+            echo "No change detected."
+          else
+            echo "changed=yes" >> $GITHUB_OUTPUT
+            echo "$HASH" > state/citrea_hash.txt
+          fi
+
+      - name: Commit state (only when changed)
+        if: steps.diff.outputs.changed == 'yes'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/citrea_hash.txt
+          git commit -m "Update Citrea Quest hash: $HASH" || echo "Nothing to commit"
+          git push
+
+      - name: Send Telegram (only when changed)
+        if: steps.diff.outputs.changed == 'yes'
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          TEXT="🔔 *Citrea Quest Update!*\nAda perubahan di halaman quest.\n\nHash baru: \`${{ steps.hash.outputs.hash }}\`\n🔗 https://bapps.citrea.xyz/quest\n\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          curl -sS -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+            -d chat_id="${CHAT_ID}" \
+            -d parse_mode="Markdown" \
+            --data-urlencode "text=${TEXT}"
