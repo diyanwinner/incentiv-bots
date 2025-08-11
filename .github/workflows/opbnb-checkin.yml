@@ -1,0 +1,45 @@
+name: Daren opBNB Check-In
+
+on:
+  schedule:
+    - cron: "20 13 * * *"   # 13:20 UTC = 20:20 WIB
+  workflow_dispatch: {}
+
+jobs:
+  checkin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install web3
+      - name: Run check-in
+        id: run
+        env:
+          OPBNB_RPC_URL: ${{ secrets.OPBNB_RPC_URL }}
+          OPBNB_PRIVATE_KEY: ${{ secrets.OPBNB_PRIVATE_KEY }}
+        run: |
+          set -o pipefail
+          python scripts/opbnb_checkin.py | tee run.log
+          echo "LOG<<EOF" >> $GITHUB_OUTPUT
+          sed -n '1,200p' run.log >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          if grep -q "\[OK\]" run.log; then
+            echo "STATUS=success" >> $GITHUB_OUTPUT
+          else
+            echo "STATUS=failed" >> $GITHUB_OUTPUT
+          fi
+      - name: Notify Telegram
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          TEXT="🟡 *Daren opBNB Check-In*\nStatus: ${{ steps.run.outputs.STATUS }}\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\nLog:\n\`\`\`\n${{ steps.run.outputs.LOG }}\n\`\`\`"
+          curl -sS -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+            -d chat_id="${CHAT_ID}" -d parse_mode="Markdown" \
+            --data-urlencode "text=${TEXT}"
