@@ -62,7 +62,7 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Notify Telegram
+           - name: Notify Telegram
         env:
           TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -73,22 +73,23 @@ jobs:
             TITLE="🔴 Daren opBNB Check-In (Multi) — FAILED"
           fi
 
-          TEXT=$(cat <<EOF
-$TITLE
-Wallet: \`${{ steps.run.outputs.WALLET }}\`
-${{ steps.run.outputs.SUCCESS }}
-
-Tx links:
-${{ steps.run.outputs.LINKS }}
-
-Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-Log:
-${{ steps.run.outputs.LOG }}
-EOF
-)
+          # Susun pesan ke file agar aman dari YAML/escape
+          {
+            echo "$TITLE"
+            echo "Wallet: \`${{ steps.run.outputs.WALLET }}\`"
+            echo "${{ steps.run.outputs.SUCCESS }}"
+            echo
+            echo "Tx links:"
+            echo "${{ steps.run.outputs.LINKS }}"
+            echo
+            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            echo "Log:"
+            echo "${{ steps.run.outputs.LOG }}"
+          } > msg.txt
 
           curl -sS -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
             -d chat_id="${CHAT_ID}" \
             -d parse_mode="Markdown" \
-            --data-urlencode "text=${TEXT}"
+            --data-urlencode "text=$(cat msg.txt)"
+ 
