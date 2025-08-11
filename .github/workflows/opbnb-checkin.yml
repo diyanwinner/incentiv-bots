@@ -2,45 +2,80 @@ name: Daren opBNB Check-In (Multi)
 
 on:
   schedule:
-    - cron: "0 1 * * *"   # 08:00 WIB
+    - cron: "0 1 * * *"    # 08:00 WIB
+    - cron: "20 13 * * *"  # 20:20 WIB (cadangan malam)
   workflow_dispatch: {}
 
 jobs:
   checkin:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
+        with:
+          python-version: "3.11"
+
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
           pip install web3
+
       - name: Run multi check-in
         id: run
         env:
           OPBNB_RPC_URL: ${{ secrets.OPBNB_RPC_URL }}
           OPBNB_PRIVATE_KEY: ${{ secrets.OPBNB_PRIVATE_KEY }}
-          CONTRACT_ADDRESSES: "0xfe7079971c388463d18e83fbff363936150e9b92,0x8461e850a4f0f9616d9a940f555ea7c735917daa"
-          EXPLORER_BASE: "https://opbnb.bscscan.com/tx/"
         run: |
           set -o pipefail
           python scripts/opbnb_checkin_multi.py | tee run.log
+
           echo "LOG<<EOF" >> $GITHUB_OUTPUT
-          sed -n '1,200p' run.log >> $GITHUB_OUTPUT
+          sed -n '1,300p' run.log >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+
           if grep -q "\[OK\] Success at" run.log; then
             echo "STATUS=success" >> $GITHUB_OUTPUT
           else
             echo "STATUS=failed" >> $GITHUB_OUTPUT
           fi
+
+          WALLET=$(grep -m1 "\[INFO\] From:" run.log | awk '{print $3}')
+          echo "WALLET=$WALLET" >> $GITHUB_OUTPUT
+          SUCCESS=$(grep -m1 "\[OK\] Success at" run.log || true)
+          echo "SUCCESS=$SUCCESS" >> $GITHUB_OUTPUT
+          LINKS=$(grep "\[INFO\] Sent" run.log | awk '{print $NF}' | paste -sd '\n' -)
+          echo "LINKS<<EOF" >> $GITHUB_OUTPUT
+          echo "$LINKS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Notify Telegram
         env:
           TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          TEXT="🟡 *Daren opBNB Check-In (Multi)*\nStatus: ${{ steps.run.outputs.STATUS }}\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\nLog:\n\`\`\`\n${{ steps.run.outputs.LOG }}\n\`\`\`"
+          TITLE="🟡 Daren opBNB Check-In (Multi)"
+          if [ "${{ steps.run.outputs.STATUS }}" = "success" ]; then
+            TITLE="🟢 Daren opBNB Check-In (Multi) — SUCCESS"
+          else
+            TITLE="🔴 Daren opBNB Check-In (Multi) — FAILED"
+          fi
+
+          TEXT="$TITLE
+Wallet: \`${{ steps.run.outputs.WALLET }}\`
+${{ steps.run.outputs.SUCCESS }}
+
+Tx links:
+${{ steps.run.outputs.LINKS }}
+
+Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+Log:
+\`\`\`
+${{ steps.run.outputs.LOG }}
+\`\`\`"
+
           curl -sS -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
-            -d chat_id="${CHAT_ID}" -d parse_mode="Markdown" \
+            -d chat_id="${CHAT_ID}" \
+            -d parse_mode="Markdown" \
             --data-urlencode "text=${TEXT}"
