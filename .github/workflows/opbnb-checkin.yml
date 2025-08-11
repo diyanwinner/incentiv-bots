@@ -1,12 +1,12 @@
-name: Generic Chain Call
+name: Daren opBNB Check-In
 
 on:
   schedule:
-    - cron: "20 13 * * *"   # 20:20 WIB (13:20 UTC) – edit suka-suka
+    - cron: "20 13 * * *"   # 13:20 UTC = 20:20 WIB
   workflow_dispatch: {}
 
 jobs:
-  run:
+  checkin:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -17,26 +17,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install web3
-      - name: Call contract
-        id: call
+      - name: Run check-in
+        id: run
         env:
-          # ==== yang wajib (ambil dari Secrets) ====
-          RPC_URL: ${{ secrets.OPBNB_RPC_URL }}
-          PRIVATE_KEY: ${{ secrets.OPBNB_PRIVATE_KEY }}
-          # ==== opsional override (boleh dibiarkan kosong) ====
-          CONTRACT_ADDRESS: "0xFe7079971c388463D18E83fbfF363936150E9B92"
-          FUNCTION_NAME: "CheckIn"
-          FUNCTION_ARGS: "[]"
-          CHAIN_ID: "204"
-          VALUE_WEI: "0"
-          GAS_MULTIPLIER: "1.2"
-          MAX_WAIT_S: "180"
-          # Minimal ABI utk fungsi yang dipanggil
-          ABI_JSON: |
-            [{"inputs":[],"name":"CheckIn","outputs":[],"stateMutability":"nonpayable","type":"function"}]
+          OPBNB_RPC_URL: ${{ secrets.OPBNB_RPC_URL }}
+          OPBNB_PRIVATE_KEY: ${{ secrets.OPBNB_PRIVATE_KEY }}
         run: |
           set -o pipefail
-          python scripts/chain_call.py | tee run.log
+          python scripts/opbnb_checkin.py | tee run.log
           echo "LOG<<EOF" >> $GITHUB_OUTPUT
           sed -n '1,200p' run.log >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -50,7 +38,7 @@ jobs:
           TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          TEXT="⛓️ *Generic Chain Call*\nStatus: ${{ steps.call.outputs.STATUS }}\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\nLog:\n\`\`\`\n${{ steps.call.outputs.LOG }}\n\`\`\`"
+          TEXT="🟡 *Daren opBNB Check-In*\nStatus: ${{ steps.run.outputs.STATUS }}\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\nLog:\n\`\`\`\n${{ steps.run.outputs.LOG }}\n\`\`\`"
           curl -sS -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
             -d chat_id="${CHAT_ID}" -d parse_mode="Markdown" \
             --data-urlencode "text=${TEXT}"
