@@ -30,39 +30,36 @@ jobs:
           set -o pipefail
           python scripts/opbnb_checkin_multi.py | tee run.log
 
-          # kirim log ke outputs (multiline)
           {
             echo "LOG<<EOF"
             sed -n '1,300p' run.log
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-          # status success/failed
           if grep -q "\[OK\] Success at" run.log; then
             echo "STATUS=success" >> "$GITHUB_OUTPUT"
           else
             echo "STATUS=failed" >> "$GITHUB_OUTPUT"
           fi
 
-          # wallet
           WALLET=$(grep -m1 "\[INFO\] From:" run.log | awk '{print $3}')
           echo "WALLET=$WALLET" >> "$GITHUB_OUTPUT"
 
-          # baris success (jika ada)
+          SUCCESS_LINE=$(grep -m1 "\[OK\] Success at" run.log || true)
           {
             echo "SUCCESS<<EOF"
-            grep -m1 "\[OK\] Success at" run.log || true
+            echo "$SUCCESS_LINE"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-          # semua link TX yang "Sent ..."
+          LINKS=$(grep "\[INFO\] Sent" run.log | sed 's/.*: //')
           {
             echo "LINKS<<EOF"
-            grep "\[INFO\] Sent" run.log | sed 's/.*: //'
+            echo "$LINKS"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-           - name: Notify Telegram
+      - name: Notify Telegram
         env:
           TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -73,7 +70,6 @@ jobs:
             TITLE="🔴 Daren opBNB Check-In (Multi) — FAILED"
           fi
 
-          # Susun pesan ke file agar aman dari YAML/escape
           {
             echo "$TITLE"
             echo "Wallet: \`${{ steps.run.outputs.WALLET }}\`"
@@ -92,4 +88,3 @@ jobs:
             -d chat_id="${CHAT_ID}" \
             -d parse_mode="Markdown" \
             --data-urlencode "text=$(cat msg.txt)"
- 
