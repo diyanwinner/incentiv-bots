@@ -1,0 +1,29 @@
+name: Galxe Nethara Watch
+on:
+  schedule:
+    - cron: "0 */2 * * *"   # jalan tiap 2 jam (UTC)
+  workflow_dispatch:        # bisa dijalankan manual dari tab Actions
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4
+
+      - name: Run watcher
+        env:
+          TARGET_URL: "https://app.galxe.com/quest/CC8PxPdpcANnPaA87bbmhw?sort=Trending"
+          STATE_FILE: ".state/galxe_nethara.json"
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python scripts/galxe_watch.py
